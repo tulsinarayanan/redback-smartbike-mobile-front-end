@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { View, Text, FlatList, TouchableOpacity } from "react-native";
+import { router } from "expo-router";
 import FontAwesome6 from "@expo/vector-icons/FontAwesome6";
 import { LinearGradient } from "expo-linear-gradient";
 import CustomSafeArea from "@/components/CustomSafeArea";
@@ -87,8 +88,8 @@ export default function Friends() {
         <Text className="text-brand-purple my-6 font-bold text-4xl">
           Friends Activity
         </Text>
-        <TouchableOpacity onPress={() => {}}>
-          <FontAwesome6 name="user-plus" size={24} color="black" />
+        <TouchableOpacity onPress={() => router.push("/chat")}>
+          <FontAwesome6 name="comments" size={24} color="black" />
         </TouchableOpacity>
       </View>
 

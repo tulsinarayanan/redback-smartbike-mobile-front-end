@@ -1,4 +1,3 @@
-import { View, Text, ImageBackground } from "react-native";
 import React from "react";
 import { Tabs } from "expo-router";
 import Entypo from "@expo/vector-icons/Entypo";
@@ -15,6 +14,15 @@ const _layout = () => {
         tabBarItemStyle: {
           borderTopWidth: 0,
         },
+
+        tabBarStyle: {
+          height: 70,
+          borderTopWidth: 0,
+          borderTopLeftRadius: 30,
+          borderTopRightRadius: 30,
+          backgroundColor: "white",
+          position: "absolute",
+        },
       }}
     >
       <Tabs.Screen
@@ -22,71 +30,75 @@ const _layout = () => {
         options={{
           title: "home",
           tabBarIcon: ({ focused }) => (
-            <>
-              <Entypo
-                name="home"
-                size={24}
-                color={focused ? "#EB7363" : "gray"}
-              />
-            </>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="statistics"
-        options={{
-          title: "statistics",
-          tabBarIcon: ({ focused }) => (
-            <>
-              <Entypo
-                name="bar-graph"
-                size={24}
-                color={focused ? "#EB7363" : "gray"}
-              />
-            </>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="workouts"
-        options={{
-          title: "workouts",
-          tabBarIcon: ({ focused }) => (
-            <>
-              <MaterialCommunityIcons
-                name="weight-lifter"
-                size={24}
-                color={focused ? "#EB7363" : "gray"}
-              />
-            </>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="friends"
-        options={{
-          title: "friends",
-          tabBarIcon: ({ focused }) => (
-            <FontAwesome5
-              name="users"             
+            <Entypo
+              name="home"
               size={24}
               color={focused ? "#EB7363" : "gray"}
             />
           ),
         }}
       />
+
+      <Tabs.Screen
+        name="statistics"
+        options={{
+          title: "statistics",
+          tabBarIcon: ({ focused }) => (
+            <Entypo
+              name="bar-graph"
+              size={24}
+              color={focused ? "#EB7363" : "gray"}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="workouts"
+        options={{
+          title: "workouts",
+          tabBarIcon: ({ focused }) => (
+            <MaterialCommunityIcons
+              name="weight-lifter"
+              size={24}
+              color={focused ? "#EB7363" : "gray"}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="friends"
+        options={{
+          title: "friends",
+          tabBarIcon: ({ focused }) => (
+            <FontAwesome5
+              name="users"
+              size={24}
+              color={focused ? "#EB7363" : "gray"}
+            />
+          ),
+        }}
+      />
+
+      {/* Hidden tab screen so friendslist keeps the bottom navigation bar */}
+      <Tabs.Screen
+        name="friendslist"
+        options={{
+          href: null,
+        }}
+      />
+
       <Tabs.Screen
         name="settings"
         options={{
           title: "settings",
           tabBarIcon: ({ focused }) => (
-            <>
-              <Entypo
-                name="cog"
-                size={24}
-                color={focused ? "#EB7363" : "gray"}
-              />
-            </>
+            <Entypo
+              name="cog"
+              size={24}
+              color={focused ? "#EB7363" : "gray"}
+            />
           ),
         }}
       />

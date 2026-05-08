@@ -26,7 +26,7 @@ const index = () => {
   const [loginData, setLoginData] = useState({ email: "", password: "" });
 
   const handleLogin = async () => {
-    // production code
+    /*/ production code
 
     const formData = new FormData();
     formData.append("email", loginData.email);
@@ -58,7 +58,7 @@ const index = () => {
         break;
     }
     // dev code
-    //router.replace("/home");
+    /*/router.replace("/home");
   };
 
   //const navigation = useNavigation();
