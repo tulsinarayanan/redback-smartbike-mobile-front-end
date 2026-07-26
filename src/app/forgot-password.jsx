@@ -32,7 +32,6 @@ const ForgotPassword = () => {
 
       alert(`Password reset link sent to ${email}`);
     } catch (err) {
-      console.log(err);
       alert("Something went wrong while sending the reset link.");
     }
   };
@@ -49,7 +48,7 @@ const ForgotPassword = () => {
               Forgot Password
             </Text>
             <Text className="text-gray-600 text-center mb-6">
-              Enter your registered email below and we’ll send you instructions
+              Enter your registered email below and we will send you instructions
               to reset your password.
             </Text>
 

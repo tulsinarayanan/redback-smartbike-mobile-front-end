@@ -1,4 +1,4 @@
-import { View, Text, Image, ActivityIndicator } from "react-native";
+import { View, Text, Image, ActivityIndicator, ScrollView } from "react-native";
 import React, { useContext } from "react";
 import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -88,7 +88,11 @@ const Settings = () => {
         </SafeAreaView>
       </LinearGradient>
 
-      <View className="flex-1 -mt-6 rounded-t-[32px] bg-[#050505] px-4 pt-8">
+      <ScrollView
+        className="flex-1 -mt-6 rounded-t-[32px] bg-[#050505] px-4 pt-8"
+        contentContainerStyle={{ paddingBottom: 24 }}
+        showsVerticalScrollIndicator={false}
+      >
         <View className="w-full max-w-[640px] self-center">
           <Text className="text-3xl font-bold text-center text-white mb-6">
             Settings
@@ -116,7 +120,7 @@ const Settings = () => {
 
           <View className="h-12" />
         </View>
-      </View>
+      </ScrollView>
     </View>
   );
 };

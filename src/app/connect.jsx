@@ -106,7 +106,10 @@ export default function Connect() {
         showsVerticalScrollIndicator={false}
       >
         <TouchableOpacity className="mb-4 self-start" onPress={() => router.back()}>
-          <Text className="text-[#C2C8D0] text-base">← Back</Text>
+          <View className="flex-row items-center">
+            <MaterialIcons name="arrow-back" size={18} color="#C2C8D0" />
+            <Text className="text-[#C2C8D0] text-base ml-1">Back</Text>
+          </View>
         </TouchableOpacity>
 
         <View className="bg-[#141A26] rounded-[28px] p-5 mb-6 border border-[#1F2937]">

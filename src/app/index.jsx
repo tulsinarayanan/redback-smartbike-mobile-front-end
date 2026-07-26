@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   TouchableOpacity,
+  Alert,
 } from "react-native";
 import React, { useState } from "react";
 import "../../global.css";
@@ -19,7 +20,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "@/context/authContext";
 
 const index = () => {
-  const { signIn } = useAuth();
+  const { signIn, signInWithOAuth } = useAuth();
   const [loginData, setLoginData] = useState({ email: "", password: "" });
 
   const handleLogin = async () => {
@@ -39,7 +40,18 @@ const index = () => {
       router.replace("/(tabs)/home");
     } catch (err) {
       alert("Something went wrong while signing in");
-      console.log(err);
+    }
+  };
+
+  const handleSocialLogin = async (provider) => {
+    try {
+      const { error } = await signInWithOAuth(provider);
+
+      if (error) {
+        Alert.alert("Sign in failed", error.message);
+      }
+    } catch (err) {
+      Alert.alert("Sign in failed", "Something went wrong while signing in.");
     }
   };
 
@@ -90,9 +102,21 @@ const index = () => {
           </View>
           <View className="flex flex-grow justify-center gap-4">
             <View className="flex-row justify-between w-1/2 self-center">
-              <LoginIcon image={require("@assets/apple-logo.png")} />
-              <LoginIcon image={require("@assets/facebook.png")} />
-              <LoginIcon image={require("@assets/google.png")} />
+              <LoginIcon
+                image={require("@assets/apple-logo.png")}
+                onPress={() => handleSocialLogin("apple")}
+                accessibilityLabel="Sign in with Apple"
+              />
+              <LoginIcon
+                image={require("@assets/facebook.png")}
+                onPress={() => handleSocialLogin("facebook")}
+                accessibilityLabel="Sign in with Facebook"
+              />
+              <LoginIcon
+                image={require("@assets/google.png")}
+                onPress={() => handleSocialLogin("google")}
+                accessibilityLabel="Sign in with Google"
+              />
             </View>
             <Text className="text-white text-center">
               Dont have an account?<Text> </Text>

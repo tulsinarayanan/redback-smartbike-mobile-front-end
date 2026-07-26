@@ -19,7 +19,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useAuth } from "@/context/authContext";
 
 const SignUp = () => {
-  const { signUp } = useAuth();
+  const { signUp, signInWithOAuth } = useAuth();
 
   const [userData, setUserData] = useState({
     username: "",
@@ -34,16 +34,11 @@ const SignUp = () => {
     }
 
     try {
-      console.log("Starting signup for:", userData.email);
-
       const { data, error } = await signUp(
         userData.email,
         userData.password,
         userData.username
       );
-
-      console.log("Signup response:", JSON.stringify(data, null, 2));
-      console.log("Signup error:", error);
 
       if (error) {
         Alert.alert("Signup failed", error.message);
@@ -69,10 +64,24 @@ const SignUp = () => {
         router.replace("/");
       }
     } catch (err) {
-      console.log("Signup catch error:", err);
       Alert.alert(
         "Error",
         err?.message || "Something went wrong while creating your account"
+      );
+    }
+  };
+
+  const handleSocialSignup = async (provider) => {
+    try {
+      const { error } = await signInWithOAuth(provider);
+
+      if (error) {
+        Alert.alert("Signup failed", error.message);
+      }
+    } catch (err) {
+      Alert.alert(
+        "Signup failed",
+        "Something went wrong while creating your account."
       );
     }
   };
@@ -135,9 +144,21 @@ const SignUp = () => {
 
           <View className="flex flex-grow justify-center gap-4">
             <View className="flex-row justify-between w-1/2 self-center">
-              <LoginIcon image={require("@assets/apple-logo.png")} />
-              <LoginIcon image={require("@assets/facebook.png")} />
-              <LoginIcon image={require("@assets/google.png")} />
+              <LoginIcon
+                image={require("@assets/apple-logo.png")}
+                onPress={() => handleSocialSignup("apple")}
+                accessibilityLabel="Sign up with Apple"
+              />
+              <LoginIcon
+                image={require("@assets/facebook.png")}
+                onPress={() => handleSocialSignup("facebook")}
+                accessibilityLabel="Sign up with Facebook"
+              />
+              <LoginIcon
+                image={require("@assets/google.png")}
+                onPress={() => handleSocialSignup("google")}
+                accessibilityLabel="Sign up with Google"
+              />
             </View>
             <Text className="text-white text-center">
               Already have an account?{" "}

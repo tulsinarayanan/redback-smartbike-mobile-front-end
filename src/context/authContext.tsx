@@ -1,4 +1,3 @@
-import "react-native-url-polyfill/auto";
 import React, {
   createContext,
   useContext,
@@ -6,20 +5,11 @@ import React, {
   useMemo,
   useState,
 } from "react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { createClient, Session, User } from "@supabase/supabase-js";
+import type { Session, User } from "@supabase/supabase-js";
+import * as Linking from "expo-linking";
+import { supabase } from "@/lib/supabase";
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
-  },
-});
+type OAuthProvider = "apple" | "facebook" | "google";
 
 type FormattedUser = {
   id: string;
@@ -35,6 +25,7 @@ type AuthContextType = {
   supabase: typeof supabase;
   signIn: (email: string, password: string) => Promise<any>;
   signUp: (email: string, password: string, username?: string) => Promise<any>;
+  signInWithOAuth: (provider: OAuthProvider) => Promise<any>;
   signOut: () => Promise<any>;
   resetPassword: (email: string) => Promise<any>;
   setUser: React.Dispatch<React.SetStateAction<FormattedUser>>;
@@ -56,6 +47,100 @@ const formatUser = (supabaseUser: User | null | undefined): FormattedUser => {
   };
 };
 
+export const ensureUserProfile = async (
+  supabaseUser: User | null | undefined,
+  username = "",
+) => {
+  if (!supabaseUser?.id) {
+    return { data: null, error: null };
+  }
+
+  const email = supabaseUser.email || "";
+  const fallbackName =
+    username.trim() ||
+    supabaseUser.user_metadata?.username ||
+    supabaseUser.user_metadata?.name ||
+    supabaseUser.user_metadata?.full_name ||
+    email.split("@")[0] ||
+    "User";
+
+  const profile = {
+    id: supabaseUser.id,
+    email,
+    username: fallbackName,
+    name: fallbackName,
+    avatar_url: supabaseUser.user_metadata?.avatar_url ?? null,
+  };
+
+  const { data: existingProfile, error: selectError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("id", supabaseUser.id)
+    .maybeSingle();
+
+  if (selectError) {
+    console.error("Profile lookup failed:", selectError.message);
+  }
+
+  if (existingProfile) {
+    return { data: existingProfile, error: null };
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .upsert(profile, { onConflict: "id" })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Profile upsert failed:", error.message);
+  }
+
+  return { data, error };
+};
+
+const repairUserProfile = (
+  supabaseUser: User | null | undefined,
+  username = "",
+) => {
+  ensureUserProfile(supabaseUser, username).catch((error) => {
+    console.error("Profile repair failed:", error);
+  });
+};
+
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs = 5000) => {
+  let timeoutId: ReturnType<typeof setTimeout>;
+
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error("Auth session restore timed out"));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timeoutId!);
+  }
+};
+
+const getOAuthCallbackParams = (url: string) => {
+  const paramsString = url.includes("#")
+    ? url.split("#")[1]
+    : url.split("?")[1];
+
+  if (!paramsString) return null;
+
+  const params = new URLSearchParams(paramsString);
+
+  return {
+    accessToken: params.get("access_token"),
+    refreshToken: params.get("refresh_token"),
+    error: params.get("error"),
+    errorDescription: params.get("error_description"),
+  };
+};
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<FormattedUser>(null);
@@ -64,26 +149,74 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     let mounted = true;
 
-    const getInitialSession = async () => {
-      const { data, error } = await supabase.auth.getSession();
+    const handleOAuthCallback = async (url: string | null) => {
+      if (!url) return;
+
+      const params = getOAuthCallbackParams(url);
+
+      if (!params) return;
+
+      if (params.error) {
+        console.error(
+          "OAuth error:",
+          params.errorDescription || params.error,
+        );
+        return;
+      }
+
+      if (!params.accessToken || !params.refreshToken) return;
+
+      const { data, error } = await supabase.auth.setSession({
+        access_token: params.accessToken,
+        refresh_token: params.refreshToken,
+      });
 
       if (error) {
-        console.log("Get session error:", error.message);
+        console.error("OAuth session error:", error.message);
+        return;
       }
 
       if (mounted) {
-        const currentSession = data?.session ?? null;
-        setSession(currentSession);
-        setUser(formatUser(currentSession?.user));
-        setLoading(false);
+        repairUserProfile(data.session?.user);
+        setSession(data.session ?? null);
+        setUser(formatUser(data.session?.user));
+      }
+    };
+
+    const getInitialSession = async () => {
+      try {
+        const { data, error } = await withTimeout(supabase.auth.getSession());
+
+        if (error) {
+          console.warn("Get session error:", error.message);
+        }
+
+        if (mounted) {
+          const currentSession = data?.session ?? null;
+          repairUserProfile(currentSession?.user);
+          setSession(currentSession);
+          setUser(formatUser(currentSession?.user));
+        }
+      } catch (error) {
+        console.error("Get session error:", error);
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
     getInitialSession();
+    Linking.getInitialURL().then(handleOAuthCallback);
+
+    const urlSubscription = Linking.addEventListener("url", ({ url }) => {
+      handleOAuthCallback(url);
+    });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      repairUserProfile(newSession?.user);
       setSession(newSession ?? null);
       setUser(formatUser(newSession?.user));
       setLoading(false);
@@ -91,6 +224,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     return () => {
       mounted = false;
+      urlSubscription.remove();
       subscription.unsubscribe();
     };
   }, []);
@@ -109,6 +243,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         });
 
         if (response?.data?.session) {
+          await ensureUserProfile(response.data.session.user);
           setSession(response.data.session);
           setUser(formatUser(response.data.session.user));
         }
@@ -127,16 +262,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           },
         });
 
+        if (response?.data?.user) {
+          await ensureUserProfile(response.data.user, username);
+        }
+
         if (response?.data?.session) {
           setSession(response.data.session);
           setUser(formatUser(response.data.session.user));
         }
 
-        return response;
-      },
+          return response;
+        },
 
-      signOut: async () => {
-        const response = await supabase.auth.signOut();
+        signInWithOAuth: async (provider: OAuthProvider) => {
+          const redirectTo = Linking.createURL("auth/callback");
+
+          const response = await supabase.auth.signInWithOAuth({
+            provider,
+            options: {
+              redirectTo,
+              skipBrowserRedirect: true,
+            },
+          });
+
+          if (response.error || !response.data?.url) {
+            return response;
+          }
+
+          await Linking.openURL(response.data.url);
+
+          return response;
+        },
+
+        signOut: async () => {
+          const response = await supabase.auth.signOut();
 
         if (!response.error) {
           setSession(null);

@@ -4,6 +4,268 @@ const createWeeklyActivity = (entries) =>
     ...entry,
   }));
 
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+const FALLBACK_PHOTO = "https://i.pravatar.cc/150?img=14";
+const ACCENTS = ["#fb7185", "#4ade80", "#60a5fa", "#f59e0b", "#c084fc"];
+const EMPTY_WEEKLY_ACTIVITY = createWeeklyActivity([
+  { day: "Mon", minutes: 0 },
+  { day: "Tue", minutes: 0 },
+  { day: "Wed", minutes: 0 },
+  { day: "Thu", minutes: 0 },
+  { day: "Fri", minutes: 0 },
+  { day: "Sat", minutes: 0 },
+  { day: "Sun", minutes: 0 },
+]);
+
+const today = new Date().toISOString().slice(0, 10);
+
+const defaultWorkout = {
+  title: "No recent ride",
+  type: "Cycling",
+  distance: "0.0 km",
+  duration: "0 min",
+  calories: "0 kcal",
+  averageSpeed: "0.0 km/h",
+  date: today,
+  intensity: "Pending",
+};
+
+const defaultEngagement = {
+  likes: 0,
+  comments: 0,
+  note: "No recent engagement yet.",
+};
+
+const normalizeWeeklyActivity = (weeklyActivity, friendId) => {
+  if (!Array.isArray(weeklyActivity) || weeklyActivity.length === 0) {
+    return EMPTY_WEEKLY_ACTIVITY.map((day) => ({
+      ...day,
+      id: `${friendId}-${day.day}`,
+    }));
+  }
+
+  return weeklyActivity.map((day, index) => ({
+    id: day?.id || `${friendId}-${day?.day || index}`,
+    day: day?.day || EMPTY_WEEKLY_ACTIVITY[index]?.day || "",
+    minutes: Number.isFinite(Number(day?.minutes)) ? Number(day.minutes) : 0,
+  }));
+};
+
+export const normalizeFriends = (rows) => {
+  if (!Array.isArray(rows)) return [];
+
+  return rows.map((row, index) => {
+    const id = row?.id?.toString() || `friend-${index}`;
+
+    return {
+      id,
+      name: row?.name || row?.username || "Rider",
+      email: row?.email || "",
+      photo: row?.photo || row?.avatar_url || FALLBACK_PHOTO,
+      status: row?.status || "Active",
+      rides: Number.isFinite(Number(row?.rides)) ? Number(row.rides) : 0,
+      accent: row?.accent || ACCENTS[index % ACCENTS.length],
+      summary:
+        row?.summary ||
+        "Ready to ride and share progress with your cycling network.",
+      latestWorkout: {
+        ...defaultWorkout,
+        ...(row?.latestWorkout || {}),
+      },
+      weeklyActivity: normalizeWeeklyActivity(row?.weeklyActivity, id),
+      recentActivities: Array.isArray(row?.recentActivities)
+        ? row.recentActivities
+        : [],
+      engagement: {
+        ...defaultEngagement,
+        ...(row?.engagement || {}),
+      },
+    };
+  });
+};
+
+export const fetchFriends = async (userId) => {
+  if (!API_BASE_URL) {
+    throw new Error("EXPO_PUBLIC_API_URL is not set");
+  }
+
+  const params = userId ? `?user_id=${encodeURIComponent(userId)}` : "";
+  const url = `${API_BASE_URL.replace(/\/$/, "")}/api/friends${params}`;
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    throw new Error(`Friends API returned ${response.status}`);
+  }
+
+  return normalizeFriends(await response.json());
+};
+
+export const normalizeUserSearchResults = (rows) => {
+  if (!Array.isArray(rows)) return [];
+
+  return rows.map((row, index) => ({
+    id: row?.id?.toString() || `user-${index}`,
+    name: row?.name || row?.username || "Rider",
+    email: row?.email || "",
+    photo: row?.photo || row?.avatar_url || FALLBACK_PHOTO,
+    friendship_id: row?.friendship_id || null,
+    friendship_status: row?.friendship_status || "none",
+  }));
+};
+
+export const searchUsers = async (query, currentUserId) => {
+  if (!API_BASE_URL || !query?.trim() || !currentUserId) {
+    if (!API_BASE_URL) {
+      console.warn("EXPO_PUBLIC_API_URL is not set. User search disabled.");
+    }
+
+    return [];
+  }
+
+  try {
+    const url = new URL("/api/users/search", API_BASE_URL);
+    url.search = new URLSearchParams({
+      q: query.trim(),
+      current_user_id: currentUserId,
+    }).toString();
+
+    const response = await fetch(url.toString());
+
+    if (!response.ok) {
+      console.warn(`User search API returned ${response.status}`);
+      return [];
+    }
+
+    return normalizeUserSearchResults(await response.json());
+  } catch (error) {
+    console.warn("User search failed. Returning empty results.", error);
+    return [];
+  }
+};
+
+export const sendFriendRequest = async (requesterId, addresseeId) => {
+  if (!API_BASE_URL) {
+    throw new Error("EXPO_PUBLIC_API_URL is not set");
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL.replace(/\/$/, "")}/api/friends/request`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        requester_id: requesterId,
+        addressee_id: addresseeId,
+      }),
+    }
+  );
+  const data = await response.json();
+
+  if (!response.ok) {
+    const error = new Error(data?.message || "Failed to send friend request");
+    error.data = data;
+    throw error;
+  }
+
+  return data;
+};
+
+export const fetchNotifications = async (userId) => {
+  if (!API_BASE_URL || !userId) {
+    return [];
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL.replace(/\/$/, "")}/api/notifications?user_id=${encodeURIComponent(
+      userId
+    )}`
+  );
+
+  if (!response.ok) {
+    throw new Error(`Notifications API returned ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  if (!Array.isArray(data)) return [];
+
+  return data.map((notification, index) => ({
+    id: notification?.id || `notification-${index}`,
+    type: notification?.type || "notification",
+    title: notification?.title || "Notification",
+    body:
+      notification?.body ||
+      notification?.message ||
+      "You have a new update.",
+    message:
+      notification?.body ||
+      notification?.message ||
+      "You have a new update.",
+    created_at: notification?.created_at || null,
+    related_id: notification?.related_id || notification?.conversation_id || null,
+    conversation_id: notification?.conversation_id || notification?.related_id || null,
+    friendship_id: notification?.friendship_id || null,
+    sender: notification?.sender || null,
+    requester: notification?.requester || null,
+  }));
+};
+
+export const fetchFriendRequests = async (userId) => {
+  if (!API_BASE_URL || !userId) {
+    return [];
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL.replace(/\/$/, "")}/api/friends/requests?user_id=${encodeURIComponent(
+      userId
+    )}`
+  );
+
+  if (!response.ok) {
+    throw new Error(`Friend requests API returned ${response.status}`);
+  }
+
+  const data = await response.json();
+
+  if (!Array.isArray(data)) return [];
+
+  return data.map((request) => ({
+    id: request?.id || request?.friendship_id,
+    friendship_id: request?.friendship_id || request?.id,
+    status: request?.status || "pending",
+    requester: normalizeFriends([request?.requester || {}])[0],
+  }));
+};
+
+export const respondToFriendRequest = async (friendshipId, action) => {
+  if (!API_BASE_URL) {
+    throw new Error("EXPO_PUBLIC_API_URL is not set");
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL.replace(/\/$/, "")}/api/friends/respond`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        friendship_id: friendshipId,
+        action,
+      }),
+    }
+  );
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data?.message || "Failed to respond to friend request");
+  }
+
+  return data;
+};
+
 export const friends = [
   {
     id: "1",
@@ -255,11 +517,14 @@ export const friends = [
   },
 ];
 
-export const getFriendById = (id) =>
-  friends.find((friend) => friend.id === String(id));
+export const getFriendById = (id, friendsList = friends) =>
+  friendsList.find((friend) => friend.id === String(id));
 
 export const getWeeklyMinutes = (friend) =>
-  friend.weeklyActivity.reduce((sum, day) => sum + day.minutes, 0);
+  (friend?.weeklyActivity || []).reduce(
+    (sum, day) => sum + (Number(day?.minutes) || 0),
+    0
+  );
 
 export const formatActivityDate = (dateString) => {
   const [year, month, day] = dateString.split("-").map(Number);
@@ -272,14 +537,14 @@ export const formatActivityDate = (dateString) => {
   });
 };
 
-export const getDashboardSummary = () => {
-  const totalFriends = friends.length;
-  const totalWeeklyMinutes = friends.reduce(
+export const getDashboardSummary = (friendsList = friends) => {
+  const totalFriends = friendsList.length;
+  const totalWeeklyMinutes = friendsList.reduce(
     (sum, friend) => sum + getWeeklyMinutes(friend),
     0
   );
-  const totalLikes = friends.reduce(
-    (sum, friend) => sum + friend.engagement.likes,
+  const totalLikes = friendsList.reduce(
+    (sum, friend) => sum + (Number(friend?.engagement?.likes) || 0),
     0
   );
 

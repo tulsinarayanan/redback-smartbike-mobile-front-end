@@ -17,8 +17,9 @@ const AppNavigator = () => {
       pathname === "/forgot-password";
 
     const isPublicScreen = pathname === "/dashboard";
+    const isAuthCallbackScreen = pathname.startsWith("/auth/callback");
 
-    if (!user && !isAuthOnlyScreen && !isPublicScreen) {
+    if (!user && !isAuthOnlyScreen && !isPublicScreen && !isAuthCallbackScreen) {
       router.replace("/");
       return;
     }
@@ -49,14 +50,18 @@ const AppNavigator = () => {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
       <Stack.Screen name="dashboard" options={{ headerShown: false }} />
+      <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
 
-      <Stack.Screen
-        name="(scheduleWorkout)"
-        options={{
-          presentation: "modal",
-          headerShown: false,
-        }}
-      />
+          <Stack.Screen name="chat/index" options={{ headerShown: false }} />
+          <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
+
+          <Stack.Screen
+            name="(scheduleWorkout)"
+            options={{
+              presentation: "modal",
+              headerShown: false,
+            }}
+          />
 
       <Stack.Screen
         name="(deleteAccountConfirmation)"
@@ -103,15 +108,22 @@ const AppNavigator = () => {
         }}
       />
 
-      <Stack.Screen
-        name="currentWorkout"
-        options={{
-          headerShown: true,
-          headerTitle: "",
-          headerTintColor: "white",
-        }}
-      />
-    </Stack>
+          <Stack.Screen
+            name="currentWorkout"
+            options={{
+              headerShown: true,
+              headerTitle: "",
+              headerTintColor: "white",
+            }}
+          />
+
+          <Stack.Screen
+            name="leaderboard"
+            options={{
+              headerShown: false,
+            }}
+          />
+        </Stack>
   );
 };
 
