@@ -1,4 +1,4 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import AntDesign from "@expo/vector-icons/AntDesign";
 import CustomSafeArea from "@/components/CustomSafeArea";
 import { AuthContext } from "@/context/authContext";
 
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
+
 export default function UserDetails() {
   const { user, setUser, loading } = useContext(AuthContext);
 
@@ -27,10 +29,75 @@ export default function UserDetails() {
   const [emailError, setEmailError] = useState("");
   const [dobError, setDobError] = useState("");
 
+  // Progression state — fetched from /api/progression
+  const [progression, setProgression] = useState(null);
+  const [progLoading, setProgLoading] = useState(true);
+
+  const fallbackLevel = (xp) => Math.floor((Number(xp) || 0) / 100) + 1;
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchProgression = async () => {
+      if (!user?.id) {
+        setProgLoading(false);
+        return;
+      }
+      // Prefer backend; fallback to fields on user object
+      if (!API_BASE_URL) {
+        const xp = Number(user?.xp) || 0;
+        if (mounted) {
+          setProgression({
+            level: user?.level ?? fallbackLevel(xp),
+            xp,
+            streak_days: Number(user?.streak_days) || 0,
+            currentLevelXp: xp % 100,
+            xpToNextLevel: 100 - (xp % 100),
+            progressPercent: Math.round(((xp % 100) / 100) * 100),
+          });
+          setProgLoading(false);
+        }
+        return;
+      }
+      try {
+        const url = `${API_BASE_URL.replace(/\/$/, "")}/api/progression/${encodeURIComponent(user.id)}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Progression API ${res.status}`);
+        const data = await res.json();
+        if (mounted) setProgression(data);
+      } catch {
+        // Backend not yet migrated or offline — derive from user object
+        const xp = Number(user?.xp) || 0;
+        if (mounted) {
+          setProgression({
+            level: user?.level ?? fallbackLevel(xp),
+            xp,
+            streak_days: Number(user?.streak_days) || 0,
+            currentLevelXp: xp % 100,
+            xpToNextLevel: 100 - (xp % 100),
+            progressPercent: Math.round(((xp % 100) / 100) * 100),
+          });
+        }
+      } finally {
+        if (mounted) setProgLoading(false);
+      }
+    };
+    fetchProgression();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.id, user?.xp, user?.level, user?.streak_days]);
+
   const profile = {
     photo: user?.photo || "https://i.pravatar.cc/150?img=5",
     stravaLink: user?.stravaLink || "https://www.strava.com",
   };
+
+  const level = progression?.level ?? fallbackLevel(progression?.xp);
+  const xp = Number(progression?.xp) || 0;
+  const streakDays = Number(progression?.streak_days) || 0;
+  const currentLevelXp = Number(progression?.currentLevelXp ?? xp % 100) || 0;
+  const xpToNext = Number(progression?.xpToNextLevel ?? 100 - (xp % 100)) || 0;
+  const progressPercent = Number(progression?.progressPercent ?? Math.round((currentLevelXp / 100) * 100)) || 0;
 
   const handleStravaPress = () => {
     Linking.openURL(profile.stravaLink);
@@ -117,6 +184,35 @@ export default function UserDetails() {
           <Image source={{ uri: profile.photo }} style={styles.avatar} />
 
           <Text style={styles.name}>{username || "Username"}</Text>
+
+          {/* Player Progression — Level / XP / Streak */}
+          <View style={styles.progressionCard}>
+            <Text style={styles.progressionTitle}>Player Progression</Text>
+            {progLoading ? (
+              <ActivityIndicator size="small" color="#ff7a6b" style={{ marginVertical: 12 }} />
+            ) : (
+              <>
+                <View style={styles.progressionRow}>
+                  <View style={styles.levelBadge}>
+                    <Text style={styles.levelBadgeText}>Lv {level}</Text>
+                  </View>
+                  <View style={styles.progressionStats}>
+                    <Text style={styles.progressionXp}>{xp} XP</Text>
+                    <Text style={styles.progressionSub}>{currentLevelXp} / 100 to next level</Text>
+                  </View>
+                  <View style={styles.streakBadge}>
+                    <Text style={styles.streakText}>🔥 {streakDays} day streak</Text>
+                  </View>
+                </View>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                </View>
+                <Text style={styles.progressLabel}>
+                  {progressPercent}% to Level {level + 1} • {xpToNext} XP needed
+                </Text>
+              </>
+            )}
+          </View>
 
           <View style={styles.card}>
             <View style={styles.headerRow}>
@@ -325,5 +421,87 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "white",
     fontWeight: "600",
+  },
+  progressionCard: {
+    width: "100%",
+    maxWidth: 520,
+    backgroundColor: "#101010",
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: "#1f1f1f",
+  },
+  progressionTitle: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+  progressionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  levelBadge: {
+    backgroundColor: "#ff7a6b",
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  levelBadgeText: {
+    color: "white",
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  progressionStats: {
+    flex: 1,
+    alignItems: "center",
+  },
+  progressionXp: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  progressionSub: {
+    color: "#9ca3af",
+    fontSize: 12,
+    marginTop: 2,
+  },
+  streakBadge: {
+    backgroundColor: "#181818",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#2a2a2a",
+  },
+  streakText: {
+    color: "#ff7a6b",
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  progressTrack: {
+    height: 8,
+    backgroundColor: "#181818",
+    borderRadius: 999,
+    overflow: "hidden",
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: "#2a2a2a",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#ff7a6b",
+    borderRadius: 999,
+  },
+  progressLabel: {
+    color: "#9ca3af",
+    fontSize: 12,
+    marginTop: 6,
+    textAlign: "center",
   },
 });

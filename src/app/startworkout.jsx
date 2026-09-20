@@ -132,8 +132,15 @@ export default function StartWorkout() {
         showsVerticalScrollIndicator={false}
       >
         <TouchableOpacity
-          className="mb-4 self-start"
-          onPress={() => router.back()}
+          className="mb-4 self-start mt-2"
+          onPress={() => {
+            try {
+              if (router.canGoBack?.()) router.back();
+              else router.replace("/(tabs)/home");
+            } catch {
+              router.replace("/(tabs)/home");
+            }
+          }}
         >
           <View className="flex-row items-center">
             <MaterialIcons name="arrow-back" size={18} color="#C2C8D0" />

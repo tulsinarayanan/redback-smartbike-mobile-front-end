@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,16 @@ import {
   TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { LineChart } from 'react-native-gifted-charts';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { AuthContext } from '@/context/authContext';
+import { useTheme } from '@/context/themeContext';
+
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL;
 
 const mockData = [
   { day: 'Mon', minutes: 22 },
@@ -36,14 +41,7 @@ const caloriesData = [
   { day: 'Sun', calories: 170 },
 ];
 
-const workoutSummary = {
-  totalDistance: '92.4 km',
-  calories: 3250,
-  avgHeartRate: '148 bpm',
-  longestRide: '99 min',
-};
-
-const recentWorkouts = [
+const recentMock = [
   { id: 1, title: 'Morning Ride', duration: '35 min', calories: '280 cal' },
   { id: 2, title: 'Hill Climb', duration: '42 min', calories: '360 cal' },
   { id: 3, title: 'Recovery Ride', duration: '20 min', calories: '140 cal' },
@@ -51,26 +49,136 @@ const recentWorkouts = [
 
 export default function RedbackWeeklySummary() {
   const { width: screenWidth } = useWindowDimensions();
+  const { isDark, toggle } = useTheme();
+  const { user } = useContext(AuthContext);
   const [loading, setLoading] = useState(true);
   const [rideData, setRideData] = useState([]);
+  const [calData, setCalData] = useState([]);
+  const [recentWorkouts, setRecentWorkouts] = useState(recentMock);
+  const [workoutSummary, setWorkoutSummary] = useState({
+    totalDistance: '92.4 km',
+    calories: 3250,
+    avgHeartRate: '148 bpm',
+    longestRide: '99 min',
+  });
   const [selectedChart, setSelectedChart] = useState('Minutes');
+  const [error, setError] = useState(null);
+
+  const fetchRides = useCallback(async () => {
+    if (!user?.id || !API_BASE_URL) {
+      // fallback to mock — keep UI light, no 1s artificial delay
+      setRideData(mockData);
+      setCalData(caloriesData);
+      setLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      setLoading(true);
+      setError(null);
+      const url = `${API_BASE_URL.replace(/\/$/, '')}/api/rides?user_id=${encodeURIComponent(user.id)}&limit=20`;
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const rides = await res.json();
+
+      if (!Array.isArray(rides) || rides.length === 0) {
+        setRideData(mockData);
+        setCalData(caloriesData);
+        setRecentWorkouts(recentMock);
+        setWorkoutSummary({
+          totalDistance: '0.0 km',
+          calories: 0,
+          avgHeartRate: '—',
+          longestRide: '0 min',
+        });
+        return;
+      }
+
+      // Build per-day aggregates for last 7 days (Mon-Sun)
+      const dayOrder = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const dayMap = Object.fromEntries(dayOrder.map((d) => [d, { minutes: 0, calories: 0 }]));
+      let totalDist = 0;
+      let totalCals = 0;
+      let maxDur = 0;
+      const recents = [];
+
+      rides.forEach((r) => {
+        const mins = Math.round((Number(r.duration) || 0) / 60) || Math.round((Number(r.duration) || 0));
+        // if duration already in minutes (<200), keep as is; else convert seconds
+        const minsNorm = (r.duration > 200 ? Math.round(r.duration / 60) : r.duration) || 0;
+        // Actually rides.duration is seconds; convert to minutes
+        const minutes = Math.round((Number(r.duration) || 0) / 60);
+        const cals = Math.round(Number(r.calories) || 0);
+        totalDist += Number(r.distance) || 0;
+        totalCals += cals;
+        if (minutes > maxDur) maxDur = minutes;
+
+        // bucket by weekday of start_time
+        try {
+          const d = new Date(r.start_time);
+          const jsDay = d.getDay(); // 0 Sun
+          const map = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+          const label = map[jsDay];
+          if (dayMap[label]) {
+            dayMap[label].minutes += minutes;
+            dayMap[label].calories += cals;
+          }
+        } catch {}
+
+        // recent list
+        recents.push({
+          id: r.ride_id,
+          title: `Ride • ${new Date(r.start_time).toLocaleDateString()}`,
+          duration: `${minutes} min`,
+          calories: `${cals} cal`,
+          raw: r,
+        });
+      });
+
+      const dayData = dayOrder.map((d) => ({ day: d, minutes: dayMap[d].minutes }));
+      const calDayData = dayOrder.map((d) => ({ day: d, calories: dayMap[d].calories }));
+
+      setRideData(dayData);
+      setCalData(calDayData);
+      setRecentWorkouts(recents.slice(0, 5));
+      setWorkoutSummary({
+        totalDistance: `${totalDist.toFixed(1)} km`,
+        calories: totalCals,
+        avgHeartRate: '—',
+        longestRide: `${maxDur} min`,
+      });
+    } catch (e) {
+      clearTimeout(timeout);
+      const isAbort = e?.name === 'AbortError';
+      setError(isAbort ? 'Stats timed out — backend unreachable' : 'Offline — showing demo stats');
+      setRideData(mockData);
+      setCalData(caloriesData);
+      setRecentWorkouts(recentMock);
+    } finally {
+      clearTimeout(timeout);
+      setLoading(false);
+    }
+  }, [user?.id]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setRideData(mockData);
-      setLoading(false);
-    }, 1000);
+    fetchRides();
+  }, [fetchRides]);
 
-    return () => clearTimeout(timer);
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchRides();
+    }, [fetchRides])
+  );
 
-  const totalMinutes = rideData.reduce((sum, d) => sum + d.minutes, 0);
-  const activeDays = rideData.filter((d) => d.minutes > 0).length;
+  const totalMinutes = rideData.reduce((sum, d) => sum + (d.minutes || 0), 0);
+  const activeDays = rideData.filter((d) => (d.minutes || 0) > 0).length;
 
   const bestDay =
     rideData.length > 0
       ? rideData.reduce((prev, current) =>
-          current.minutes > prev.minutes ? current : prev
+          (current.minutes || 0) > (prev.minutes || 0) ? current : prev
         )
       : null;
 
@@ -83,7 +191,7 @@ export default function RedbackWeeklySummary() {
     label: item.day,
   }));
 
-  const caloriesLineData = caloriesData.map((item) => ({
+  const caloriesLineData = calData.map((item) => ({
     value: item.calories,
     label: item.day,
   }));
@@ -112,19 +220,43 @@ export default function RedbackWeeklySummary() {
   const tabActiveTextColor = selectedChart === 'Minutes' ? '#fff' : '#3A0A50';
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
+    <SafeAreaView style={[styles.safeArea, isDark && { backgroundColor: '#0B0F1A' }]}>
+      <ScrollView contentContainerStyle={[styles.container, isDark && { backgroundColor: '#0B0F1A' }]}>
         <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.title}>Track your stats</Text>
-            <Text style={styles.subtitle}>Weekly SmartBike ride progress</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.title, isDark && { color: 'white' }]}>Track your stats</Text>
+            <Text style={[styles.subtitle, isDark && { color: '#9CA3AF' }]}>Weekly SmartBike ride progress</Text>
           </View>
 
-          <MaterialIcons name="insert-chart" size={30} color="#3A0A50" style={styles.headerIcon} />
+          <TouchableOpacity
+            onPress={toggle}
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
+              backgroundColor: isDark ? '#1D2432' : '#f3f0f7',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: isDark ? '#2A3446' : '#ded7e8',
+              marginLeft: 12,
+            }}
+          >
+            <MaterialIcons name={isDark ? 'light-mode' : 'dark-mode'} size={20} color={isDark ? '#EB7363' : '#3A0A50'} />
+          </TouchableOpacity>
         </View>
 
+        {error && (
+          <View style={{ backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca', borderRadius: 12, padding: 12, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ color: '#991b1b', fontSize: 12, flex: 1, marginRight: 8 }}>{error}</Text>
+            <TouchableOpacity onPress={fetchRides} style={{ backgroundColor: '#3A0A50', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 }}>
+              <Text style={{ color: 'white', fontSize: 12, fontWeight: '700' }}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {loading ? (
-          <ActivityIndicator size="large" color="#3A0A50" style={styles.loader} />
+          <ActivityIndicator size="large" color={isDark ? "#EB7363" : "#3A0A50"} style={styles.loader} />
         ) : (
           <>
             <View style={styles.cardGrid}>
@@ -215,7 +347,7 @@ export default function RedbackWeeklySummary() {
                   xAxisLabelTextStyle={{ color: '#ffffff', fontWeight: '700' }}
                   backgroundColor="transparent"
                   noOfSections={4}
-                  maxValue={selectedChart === 'Minutes' ? 120 : 600}
+                  maxValue={selectedChart === 'Minutes' ? Math.max(120, Math.ceil((peakPoint?.value || 0) * 1.2)) : Math.max(600, Math.ceil((peakPoint?.value || 0) * 1.2))}
                   width={chartWidth}
                   spacing={spacing}
                   initialSpacing={25}
@@ -291,32 +423,17 @@ export default function RedbackWeeklySummary() {
               </Text>
             </LinearGradient>
 
-            <View style={styles.recentBox}>
-              <Text style={styles.recentTitle}>Recent Workouts</Text>
+            <View style={[styles.recentBox, isDark && { backgroundColor: '#141A26', borderWidth: 1, borderColor: '#1F2937' }]}>
+              <Text style={[styles.recentTitle, isDark && { color: 'white' }]}>Recent Workouts</Text>
 
               {recentWorkouts.map((workout) => (
-                <View key={workout.id} style={styles.workoutRow}>
+                <View key={workout.id} style={[styles.workoutRow, isDark && { borderBottomColor: '#1F2937' }]}>
                   <View>
-                    <Text style={styles.workoutName}>{workout.title}</Text>
-                    <Text style={styles.workoutDuration}>{workout.duration}</Text>
+                    <Text style={[styles.workoutName, isDark && { color: 'white' }]}>{workout.title}</Text>
+                    <Text style={[styles.workoutDuration, isDark && { color: '#9CA3AF' }]}>{workout.duration}</Text>
                   </View>
 
-                  <Text style={styles.workoutCalories}>{workout.calories}</Text>
-                </View>
-              ))}
-            </View>
-
-            <View style={styles.recentBox}>
-              <Text style={styles.recentTitle}>Recent Workouts</Text>
-
-              {recentWorkouts.map((workout) => (
-                <View key={workout.id} style={styles.workoutRow}>
-                  <View>
-                    <Text style={styles.workoutName}>{workout.title}</Text>
-                    <Text style={styles.workoutDuration}>{workout.duration}</Text>
-                  </View>
-
-                  <Text style={styles.workoutCalories}>{workout.calories}</Text>
+                  <Text style={[styles.workoutCalories, isDark && { color: '#EB7363' }]}>{workout.calories}</Text>
                 </View>
               ))}
             </View>
@@ -348,9 +465,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginTop: 10,
     marginBottom: 28,
-  },
-  loader: {
-    marginTop: 40,
   },
   title: {
     fontSize: 39,

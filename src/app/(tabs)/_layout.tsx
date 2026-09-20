@@ -74,6 +74,34 @@ const _layout = () => {
       />
 
       <Tabs.Screen
+        name="healthyBot"
+        options={{
+          title: "Healthy Bot",
+          tabBarIcon: ({ focused }) => (
+            <MaterialCommunityIcons
+              name="robot"
+              size={24}
+              color={focused ? "#EB7363" : "gray"}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="progression"
+        options={{
+          title: "progression",
+          tabBarIcon: ({ focused }) => (
+            <FontAwesome5
+              name="trophy"
+              size={20}
+              color={focused ? "#EB7363" : "gray"}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="friends"
         options={{
           title: "friends",

@@ -13,8 +13,7 @@ const CustomSafeArea = ({
   applyTopInset = true,
 }) => {
   const insets = useSafeAreaInsets();
-  const topPadding =
-    Platform.OS === "android" && applyTopInset ? insets.top : 0;
+  const topPadding = applyTopInset ? insets.top : 0;
   return (
     <SafeAreaProvider>
       <SafeAreaView
